@@ -1,0 +1,21 @@
+services:
+  barracuda-dvl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: root
+    container_name: barracuda-dvl
+    tty: true
+    network_mode: host
+    restart: "no"
+    
+    
+    volumes:
+     - type: bind
+       source: /run/host-services/ssh-auth.sock
+       target: /run/host-services/ssh-auth.sock
+     - $HOME/.gitconfig:/root/.gitconfig:ro
+    environment:
+      - SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+    working_dir: /opt/barracuda-dvl
+
