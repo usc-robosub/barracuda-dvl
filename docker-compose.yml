@@ -11,5 +11,3 @@ services:
     volumes:
       - $HOME/.gitconfig:/root/.gitconfig:ro
       - $HOME/.ssh:/root/.ssh
-    working_dir: /opt/barracuda-dvl
-

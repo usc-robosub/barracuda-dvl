@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y \
     && ssh-keyscan github.com >> /root/.ssh/known_hosts \
     && git config --global url."git@github.com:".insteadOf "https://github.com/" \
     && echo "source /opt/ros/noetic/setup.bash" >> /root/.bashrc \
-    && echo "source /opt/barracuda-dvl/catkin_ws/devel/setup.bash" >> /root/.bashrc
+    && echo "[ -f /opt/barracuda-dvl/catkin_ws/devel/setup.bash ] && source /opt/barracuda-dvl/catkin_ws/devel/setup.bash" >> /root/.bashrc \
+    && echo "cd /opt/barracuda-dvl/catkin_ws" >> /root/.bashrc
 
-
+WORKDIR /opt/barracuda-dvl/catkin_ws/
 CMD ["/bin/bash"]
