@@ -7,7 +7,7 @@ services:
     container_name: barracuda-dvl
     tty: true
     network_mode: host
-    restart: "no"
+    restart: "always"
     volumes:
       - $HOME/.gitconfig:/root/.gitconfig:ro
       - $HOME/.ssh:/root/.ssh
