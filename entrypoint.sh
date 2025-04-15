@@ -1,3 +1,10 @@
 source /opt/ros/noetic/setup.bash
-[ -f /opt/barracuda-dvl/catkin_ws/devel/setup.bash ] && source /opt/barracuda-dvl/catkin_ws/devel/setup.bash
-exec tail -f /dev/null
+
+catkin_make
+source devel/setup.bash
+
+echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+echo "source /opt/barracuda-dvl/catkin_ws/devel/setup.bash" >> ~/.bashrc
+
+roslaunch barracuda_dvl launch_dvl.launch
+
