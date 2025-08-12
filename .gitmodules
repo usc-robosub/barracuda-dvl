@@ -1,4 +1,4 @@
 [submodule "catkin_ws/src/dvl-a50-ros-driver"]
 	path = catkin_ws/src/dvl-a50-ros-driver
-	url = git@github.com:usc-robosub/dvl-a50-ros-driver.git
+	url = https://github.com/usc-robosub/dvl-a50-ros-driver.git
 	branch = with-covariance
