@@ -1,0 +1,28 @@
+<launch>
+  <!-- DVL Driver Node -->
+  <node name="waterlinked_dvl_driver" pkg="waterlinked_dvl" type="dvl_driver.py" output="screen">
+    <!-- DVL Connection Parameters -->
+    <param name="dvl_host" value="192.168.2.95" />
+    <param name="dvl_port" value="16171" />
+    
+    <!-- Frame Parameters -->
+    <param name="frame_id" value="dvl_link" />
+    <param name="odom_frame_id" value="odom" />
+    <param name="publish_tf" value="true" />
+    
+    <!-- Connection Parameters -->
+    <param name="connection_timeout" value="5.0" />
+    <param name="reconnect_interval" value="2.0" />
+    
+    <!-- Remap topics if needed -->
+    <remap from="dvl/odometry" to="dvl/odometry" />
+    <remap from="dvl/pose" to="dvl/pose" />
+    <remap from="dvl/altitude" to="dvl/altitude" />
+  </node>
+  
+  <!-- Optional: Static transform from base_link to dvl_link -->
+  <!-- Adjust values based on your DVL mounting position -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="base_to_dvl"
+        args="0 0 -0.1 0 0 0 base_link dvl_link" />
+        
+</launch>
