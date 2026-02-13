@@ -1,10 +1,14 @@
-source /opt/ros/noetic/setup.bash
+#!/usr/bin/env bash
+set -e
 
-catkin_make
-source devel/setup.bash
+source /opt/ros/humble/setup.bash
 
-echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
-echo "source /opt/barracuda-dvl/catkin_ws/devel/setup.bash" >> ~/.bashrc
+cd /opt/barracuda-dvl/catkin_ws
+colcon build --symlink-install
+source install/setup.bash
 
-roslaunch barracuda_dvl launch_dvl.launch
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+echo "source /opt/barracuda-dvl/catkin_ws/install/setup.bash" >> ~/.bashrc
+
+ros2 launch waterlinked_dvl launch_dvl.launch.py
 

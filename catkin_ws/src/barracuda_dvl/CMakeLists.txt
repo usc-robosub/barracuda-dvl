@@ -1,35 +1,24 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.5)
 project(waterlinked_dvl)
 
-find_package(catkin REQUIRED COMPONENTS
-  rospy
-  std_msgs
-  nav_msgs
-  geometry_msgs
-  sensor_msgs
-  std_srvs
-  tf2_ros
-  tf
-)
+find_package(ament_cmake REQUIRED)
 
-catkin_package(
-  CATKIN_DEPENDS rospy std_msgs nav_msgs geometry_msgs sensor_msgs std_srvs tf2_ros tf
-)
-
-# Install Python scripts
-catkin_install_python(PROGRAMS
-  scripts/dvl_driver.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# Install Python script
+install(PROGRAMS
+  scripts/barracuda-dvl-ros-driver.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 # Install launch files
 install(DIRECTORY launch/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
-  FILES_MATCHING PATTERN "*.launch"
+  DESTINATION share/${PROJECT_NAME}/launch
+  FILES_MATCHING PATTERN "*.launch.py"
 )
 
 # Install config files
 install(DIRECTORY config/
-  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
+  DESTINATION share/${PROJECT_NAME}/config
   FILES_MATCHING PATTERN "*.yaml"
 )
+
+ament_package()

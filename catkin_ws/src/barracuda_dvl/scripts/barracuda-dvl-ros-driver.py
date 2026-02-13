@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 """
 Water Linked DVL A50 ROS Driver
@@ -10,60 +10,76 @@ Author: Generated for Water Linked DVL A50 integration
 License: MIT
 """
 
-import rospy
-import socket
 import json
+import socket
 import threading
 import time
-from std_msgs.msg import Header
+from math import cos, sin
+
+import rclpy
+from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseWithCovariance, TwistWithCovariance, Point, Quaternion, Vector3
+from geometry_msgs.msg import PoseWithCovariance
+from geometry_msgs.msg import TransformStamped
 from sensor_msgs.msg import Range
-from std_srvs.srv import SetBool, SetBoolResponse
+from std_srvs.srv import SetBool
 import tf2_ros
-import tf.transformations
-import numpy as np
 
 
-class WaterLinkedDVLDriver:
-    """ROS driver for Water Linked DVL A50"""
-    
+class WaterLinkedDVLDriver(Node):
+    """ROS 2 driver for Water Linked DVL A50"""
+
     def __init__(self):
-        rospy.init_node('waterlinked_dvl_driver', anonymous=False)
-        
+        super().__init__('waterlinked_dvl_driver')
+
         # Parameters
-        self.dvl_host = rospy.get_param('~dvl_host', '192.168.2.95')  # Default DVL IP
-        self.dvl_port = rospy.get_param('~dvl_port', 16171)  # TCP port for JSON protocol
-        self.frame_id = rospy.get_param('~frame_id', 'dvl_link')
-        self.odom_frame_id = rospy.get_param('~odom_frame_id', 'odom')
-        self.publish_tf = rospy.get_param('~publish_tf', True)
-        self.connection_timeout = rospy.get_param('~connection_timeout', 5.0)
-        self.reconnect_interval = rospy.get_param('~reconnect_interval', 2.0)
-        
+        self.declare_parameter('dvl_host', '192.168.2.95')
+        self.declare_parameter('dvl_port', 16171)
+        self.declare_parameter('frame_id', 'dvl_link')
+        self.declare_parameter('odom_frame_id', 'odom')
+        self.declare_parameter('publish_tf', True)
+        self.declare_parameter('connection_timeout', 5.0)
+        self.declare_parameter('reconnect_interval', 2.0)
+
+        self.dvl_host = self.get_parameter('dvl_host').value
+        self.dvl_port = int(self.get_parameter('dvl_port').value)
+        self.frame_id = self.get_parameter('frame_id').value
+        self.odom_frame_id = self.get_parameter('odom_frame_id').value
+        self.publish_tf = self._get_bool_param('publish_tf', True)
+        self.connection_timeout = float(self.get_parameter('connection_timeout').value)
+        self.reconnect_interval = float(self.get_parameter('reconnect_interval').value)
+
         # Publishers
-        self.odom_pub = rospy.Publisher('dvl/odometry', Odometry, queue_size=10)
-        self.pose_pub = rospy.Publisher('dvl/pose', PoseWithCovariance, queue_size=10)
-        self.altitude_pub = rospy.Publisher('dvl/altitude', Range, queue_size=10)
-        
+        self.odom_pub = self.create_publisher(Odometry, 'dvl/odometry', 10)
+        self.pose_pub = self.create_publisher(PoseWithCovariance, 'dvl/pose', 10)
+        self.altitude_pub = self.create_publisher(Range, 'dvl/altitude', 10)
+
         # Services
-        self.acoustic_service = rospy.Service('dvl/set_acoustic_enabled', SetBool, self.set_acoustic_enabled_callback)
-        
+        self.acoustic_service = self.create_service(SetBool, 'dvl/set_acoustic_enabled', self.set_acoustic_enabled_callback)
+
         # TF broadcaster
-        if self.publish_tf:
-            self.tf_broadcaster = tf2_ros.TransformBroadcaster()
-        
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self) if self.publish_tf else None
+
         # Socket and connection management
         self.socket = None
         self.connected = False
         self.socket_lock = threading.Lock()
         self.running = True
-        
+
         # Data storage
         self.last_velocity_msg = None
         self.last_position_msg = None
-        
-        rospy.loginfo("Water Linked DVL Driver initialized")
-        rospy.loginfo(f"Connecting to DVL at {self.dvl_host}:{self.dvl_port}")
+
+        self.get_logger().info('Water Linked DVL Driver initialized')
+        self.get_logger().info(f'Connecting to DVL at {self.dvl_host}:{self.dvl_port}')
+
+    def _get_bool_param(self, name, default):
+        value = self.get_parameter(name).value
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ('1', 'true', 'yes', 'on')
+        return bool(value) if value is not None else default
         
     def connect_to_dvl(self):
         """Establish TCP connection to DVL"""
@@ -76,11 +92,11 @@ class WaterLinkedDVLDriver:
                 self.socket.settimeout(self.connection_timeout)
                 self.socket.connect((self.dvl_host, self.dvl_port))
                 self.connected = True
-                rospy.loginfo("Successfully connected to DVL")
+                self.get_logger().info('Successfully connected to DVL')
                 return True
                 
         except socket.error as e:
-            rospy.logwarn(f"Failed to connect to DVL: {e}")
+            self.get_logger().warning(f'Failed to connect to DVL: {e}')
             self.connected = False
             return False
     
@@ -117,14 +133,14 @@ class WaterLinkedDVLDriver:
                 return None
                 
         except (socket.error, json.JSONDecodeError) as e:
-            rospy.logwarn(f"Error sending command: {e}")
+            self.get_logger().warning(f'Error sending command: {e}')
             self.connected = False
             return None
     
     def set_acoustic_enabled_callback(self, req):
         """Service callback to enable/disable acoustics"""
-        response = SetBoolResponse()
-        
+        response = SetBool.Response()
+
         command = {
             "command": "set_config",
             "parameters": {
@@ -137,12 +153,12 @@ class WaterLinkedDVLDriver:
         if result and result.get('success', False):
             response.success = True
             response.message = f"Acoustics {'enabled' if req.data else 'disabled'} successfully"
-            rospy.loginfo(response.message)
+            self.get_logger().info(response.message)
         else:
             response.success = False
             error_msg = result.get('error_message', 'Unknown error') if result else 'Communication error'
             response.message = f"Failed to set acoustics: {error_msg}"
-            rospy.logwarn(response.message)
+            self.get_logger().warning(response.message)
         
         return response
     
@@ -152,7 +168,7 @@ class WaterLinkedDVLDriver:
             if data.get('type') != 'velocity':
                 return
             
-            current_time = rospy.Time.now()
+            current_time = self.get_clock().now().to_msg()
             
             # Create odometry message
             odom_msg = Odometry()
@@ -192,11 +208,13 @@ class WaterLinkedDVLDriver:
             
             self.last_velocity_msg = odom_msg
             
-            rospy.logdebug(f"Published velocity: vx={data.get('vx', 0):.3f}, "
-                          f"vy={data.get('vy', 0):.3f}, vz={data.get('vz', 0):.3f}")
+            self.get_logger().debug(
+                f"Published velocity: vx={data.get('vx', 0):.3f}, "
+                f"vy={data.get('vy', 0):.3f}, vz={data.get('vz', 0):.3f}"
+            )
             
         except Exception as e:
-            rospy.logwarn(f"Error parsing velocity report: {e}")
+            self.get_logger().warning(f'Error parsing velocity report: {e}')
     
     def parse_position_report(self, data):
         """Parse dead-reckoning report and publish pose"""
@@ -204,7 +222,7 @@ class WaterLinkedDVLDriver:
             if data.get('type') != 'position_local':
                 return
             
-            current_time = rospy.Time.now()
+            current_time = self.get_clock().now().to_msg()
             
             # Create pose message
             pose_msg = PoseWithCovariance()
@@ -215,12 +233,12 @@ class WaterLinkedDVLDriver:
             pose_msg.pose.position.z = data.get('z', 0.0)
             
             # Orientation from roll, pitch, yaw (in degrees)
-            roll = np.radians(data.get('roll', 0.0))
-            pitch = np.radians(data.get('pitch', 0.0))
-            yaw = np.radians(data.get('yaw', 0.0))
-            
+            roll = data.get('roll', 0.0) * 0.017453292519943295
+            pitch = data.get('pitch', 0.0) * 0.017453292519943295
+            yaw = data.get('yaw', 0.0) * 0.017453292519943295
+
             # Convert to quaternion
-            quat = tf.transformations.quaternion_from_euler(roll, pitch, yaw)
+            quat = quaternion_from_euler(roll, pitch, yaw)
             pose_msg.pose.orientation.x = quat[0]
             pose_msg.pose.orientation.y = quat[1]
             pose_msg.pose.orientation.z = quat[2]
@@ -244,8 +262,6 @@ class WaterLinkedDVLDriver:
             
             # Publish TF if enabled
             if self.publish_tf:
-                from geometry_msgs.msg import TransformStamped
-                
                 transform = TransformStamped()
                 transform.header.stamp = current_time
                 transform.header.frame_id = self.odom_frame_id
@@ -256,25 +272,29 @@ class WaterLinkedDVLDriver:
                 transform.transform.translation.z = pose_msg.pose.position.z
                 
                 transform.transform.rotation = pose_msg.pose.orientation
-                
+
                 self.tf_broadcaster.sendTransform(transform)
             
             self.last_position_msg = pose_msg
             
-            rospy.logdebug(f"Published pose: x={data.get('x', 0):.3f}, "
-                          f"y={data.get('y', 0):.3f}, z={data.get('z', 0):.3f}")
+            self.get_logger().debug(
+                f"Published pose: x={data.get('x', 0):.3f}, "
+                f"y={data.get('y', 0):.3f}, z={data.get('z', 0):.3f}"
+            )
             
         except Exception as e:
-            rospy.logwarn(f"Error parsing position report: {e}")
+            self.get_logger().warning(f'Error parsing position report: {e}')
     
     def listen_for_data(self):
         """Main loop to listen for DVL data"""
-        while self.running and not rospy.is_shutdown():
+        while self.running and rclpy.ok():
             if not self.connected:
                 if self.connect_to_dvl():
                     continue
                 else:
-                    rospy.logwarn(f"Retrying connection in {self.reconnect_interval} seconds...")
+                    self.get_logger().warning(
+                        f"Retrying connection in {self.reconnect_interval} seconds..."
+                    )
                     time.sleep(self.reconnect_interval)
                     continue
             
@@ -311,20 +331,20 @@ class WaterLinkedDVLDriver:
                                     self.parse_position_report(json_data)
                                 elif msg_type == 'response':
                                     # Handle command responses if needed
-                                    rospy.logdebug(f"Received response: {json_data}")
+                                    self.get_logger().debug(f"Received response: {json_data}")
                                 
                             except json.JSONDecodeError as e:
-                                rospy.logwarn(f"Invalid JSON received: {e}")
+                                self.get_logger().warning(f'Invalid JSON received: {e}')
                                 continue
                             
             except socket.error as e:
-                rospy.logwarn(f"Socket error: {e}")
+                self.get_logger().warning(f'Socket error: {e}')
                 self.connected = False
                 self.disconnect_from_dvl()
                 time.sleep(self.reconnect_interval)
                 
             except Exception as e:
-                rospy.logerr(f"Unexpected error in data listener: {e}")
+                self.get_logger().error(f'Unexpected error in data listener: {e}')
                 time.sleep(1.0)
     
     def run(self):
@@ -334,32 +354,52 @@ class WaterLinkedDVLDriver:
         listener_thread.daemon = True
         listener_thread.start()
         
-        rospy.loginfo("DVL driver started. Publishing on topics:")
-        rospy.loginfo("  - /dvl/odometry (nav_msgs/Odometry)")
-        rospy.loginfo("  - /dvl/pose (geometry_msgs/PoseWithCovariance)")
-        rospy.loginfo("  - /dvl/altitude (sensor_msgs/Range)")
-        rospy.loginfo("Services available:")
-        rospy.loginfo("  - /dvl/set_acoustic_enabled (std_srvs/SetBool)")
+        self.get_logger().info('DVL driver started. Publishing on topics:')
+        self.get_logger().info('  - /dvl/odometry (nav_msgs/Odometry)')
+        self.get_logger().info('  - /dvl/pose (geometry_msgs/PoseWithCovariance)')
+        self.get_logger().info('  - /dvl/altitude (sensor_msgs/Range)')
+        self.get_logger().info('Services available:')
+        self.get_logger().info('  - /dvl/set_acoustic_enabled (std_srvs/SetBool)')
         
         # Keep the node running
         try:
-            rospy.spin()
+            rclpy.spin(self)
         except KeyboardInterrupt:
-            rospy.loginfo("Shutting down DVL driver...")
+            self.get_logger().info('Shutting down DVL driver...')
         finally:
             self.running = False
             self.disconnect_from_dvl()
+            self.destroy_node()
+
+
+def quaternion_from_euler(roll, pitch, yaw):
+    """Convert roll, pitch, yaw (rad) to quaternion (x, y, z, w)."""
+    cy = cos(yaw * 0.5)
+    sy = sin(yaw * 0.5)
+    cp = cos(pitch * 0.5)
+    sp = sin(pitch * 0.5)
+    cr = cos(roll * 0.5)
+    sr = sin(roll * 0.5)
+
+    qx = sr * cp * cy - cr * sp * sy
+    qy = cr * sp * cy + sr * cp * sy
+    qz = cr * cp * sy - sr * sp * cy
+    qw = cr * cp * cy + sr * sp * sy
+    return (qx, qy, qz, qw)
 
 
 def main():
     """Main entry point"""
+    rclpy.init()
     try:
         driver = WaterLinkedDVLDriver()
         driver.run()
-    except rospy.ROSInterruptException:
-        pass
     except Exception as e:
-        rospy.logerr(f"Failed to start DVL driver: {e}")
+        rclpy.logging.get_logger('waterlinked_dvl_driver').error(
+            f'Failed to start DVL driver: {e}'
+        )
+    finally:
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
