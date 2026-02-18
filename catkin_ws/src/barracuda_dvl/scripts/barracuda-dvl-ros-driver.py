@@ -12,7 +12,6 @@ License: MIT
 
 import json
 import socket
-import threading
 import time
 from math import cos, sin
 
@@ -35,6 +34,7 @@ class WaterLinkedDVLDriver(Node):
         # Parameters
         self.declare_parameter('dvl_host', '192.168.2.95')
         self.declare_parameter('dvl_port', 16171)
+        self.declare_parameter('client_address', '0.0.0.0')
         self.declare_parameter('frame_id', 'dvl_link')
         self.declare_parameter('odom_frame_id', 'odom')
         self.declare_parameter('publish_tf', True)
@@ -43,11 +43,14 @@ class WaterLinkedDVLDriver(Node):
 
         self.dvl_host = self.get_parameter('dvl_host').value
         self.dvl_port = int(self.get_parameter('dvl_port').value)
+        self.client_address = self.get_parameter('client_address').value
         self.frame_id = self.get_parameter('frame_id').value
         self.odom_frame_id = self.get_parameter('odom_frame_id').value
         self.publish_tf = self._get_bool_param('publish_tf', True)
         self.connection_timeout = float(self.get_parameter('connection_timeout').value)
         self.reconnect_interval = float(self.get_parameter('reconnect_interval').value)
+
+        self.get_logger().info(f'Parameters loaded: dvl_host={self.dvl_host}, dvl_port={self.dvl_port}, client_address={self.client_address}')
 
         # Publishers
         self.odom_pub = self.create_publisher(Odometry, 'dvl/odometry', 10)
@@ -63,8 +66,8 @@ class WaterLinkedDVLDriver(Node):
         # Socket and connection management
         self.socket = None
         self.connected = False
-        self.socket_lock = threading.Lock()
         self.running = True
+        self._recv_buffer = ""
 
         # Data storage
         self.last_velocity_msg = None
@@ -72,6 +75,11 @@ class WaterLinkedDVLDriver(Node):
 
         self.get_logger().info('Water Linked DVL Driver initialized')
         self.get_logger().info(f'Connecting to DVL at {self.dvl_host}:{self.dvl_port}')
+        self.get_logger().info(f'Client address: {self.client_address}')
+        
+        # Start connection and timer
+        self.connect_to_dvl()
+        self.timer = self.create_timer(0.05, self.timer_callback)  # 20Hz polling
 
     def _get_bool_param(self, name, default):
         value = self.get_parameter(name).value
@@ -84,53 +92,139 @@ class WaterLinkedDVLDriver(Node):
     def connect_to_dvl(self):
         """Establish TCP connection to DVL"""
         try:
-            with self.socket_lock:
-                if self.socket:
+            # Close any existing socket
+            if self.socket:
+                try:
                     self.socket.close()
-                
-                self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.socket.settimeout(self.connection_timeout)
-                self.socket.connect((self.dvl_host, self.dvl_port))
-                self.connected = True
-                self.get_logger().info('Successfully connected to DVL')
-                return True
+                except Exception:
+                    pass
+            
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            
+            # Bind to local address if specified
+            if self.client_address and self.client_address != '0.0.0.0':
+                self.socket.bind((self.client_address, 0))
+            
+            # Connect with timeout (blocking)
+            self.socket.settimeout(self.connection_timeout)
+            self.socket.connect((self.dvl_host, self.dvl_port))
+            
+            # Set to non-blocking after successful connect
+            self.socket.setblocking(False)
+            self.connected = True
+            self._recv_buffer = ""
+            self.get_logger().info(f'Connected to DVL at {self.dvl_host}:{self.dvl_port}')
+            return True
                 
         except socket.error as e:
             self.get_logger().warning(f'Failed to connect to DVL: {e}')
             self.connected = False
+            if self.socket:
+                try:
+                    self.socket.close()
+                except Exception:
+                    pass
+                self.socket = None
             return False
     
     def disconnect_from_dvl(self):
         """Close TCP connection to DVL"""
-        with self.socket_lock:
-            if self.socket:
+        if self.socket:
+            try:
                 self.socket.close()
-                self.socket = None
-            self.connected = False
+            except Exception:
+                pass
+            self.socket = None
+        self.connected = False
+        self._recv_buffer = ""
+    
+    def get_data(self):
+        """Read available data and return next complete JSON line, or None"""
+        if not self.connected or not self.socket:
+            return None
+            
+        try:
+            chunk = self.socket.recv(4096).decode('utf-8', errors='ignore')
+            if not chunk:
+                # Remote closed the socket
+                self.get_logger().warning('Socket closed by DVL; reconnecting...')
+                self.disconnect_from_dvl()
+                return None
+            self._recv_buffer += chunk
+        except BlockingIOError:
+            # No data available right now
+            return None
+        except socket.error as e:
+            self.get_logger().warning(f'Socket error: {e}; reconnecting...')
+            self.disconnect_from_dvl()
+            return None
+        
+        # Check if we have a complete line
+        if '\n' in self._recv_buffer:
+            line, _sep, rest = self._recv_buffer.partition('\n')
+            self._recv_buffer = rest
+            return line.strip()
+        
+        return None
+    
+    def timer_callback(self):
+        """Timer callback to poll for DVL data"""
+        # Check connection
+        if not self.connected:
+            # Try to reconnect
+            if self.connect_to_dvl():
+                return
+            else:
+                # Don't spam logs, reconnect attempt built into connect_to_dvl
+                return
+        
+        # Read and process data
+        raw_line = self.get_data()
+        if raw_line is None:
+            return
+        
+        if not raw_line:
+            return
+        
+        try:
+            json_data = json.loads(raw_line)
+            
+            # Route data based on type
+            msg_type = json_data.get('type')
+            if msg_type == 'velocity':
+                self.parse_velocity_report(json_data)
+            elif msg_type == 'position_local':
+                self.parse_position_report(json_data)
+            elif msg_type == 'response':
+                self.get_logger().debug(f"Received response: {json_data}")
+                
+        except json.JSONDecodeError as e:
+            self.get_logger().warning(f'JSON parse error: {e}; line: {raw_line}')
     
     def send_command(self, command_dict):
         """Send JSON command to DVL and return response"""
         try:
-            with self.socket_lock:
-                if not self.connected or not self.socket:
-                    return None
-                
-                command_str = json.dumps(command_dict) + '\n'
-                self.socket.send(command_str.encode('utf-8'))
-                
-                # Read response
-                response_data = ""
-                while True:
-                    chunk = self.socket.recv(1024).decode('utf-8')
-                    if not chunk:
-                        break
-                    response_data += chunk
-                    if '\n' in response_data:
-                        break
-                
-                if response_data.strip():
-                    return json.loads(response_data.strip())
+            if not self.connected or not self.socket:
                 return None
+            
+            command_str = json.dumps(command_dict) + '\n'
+            self.socket.send(command_str.encode('utf-8'))
+            
+            # Read response (blocking for commands)
+            self.socket.setblocking(True)
+            response_data = ""
+            while True:
+                chunk = self.socket.recv(1024).decode('utf-8')
+                if not chunk:
+                    break
+                response_data += chunk
+                if '\n' in response_data:
+                    break
+            self.socket.setblocking(False)
+            
+            if response_data.strip():
+                return json.loads(response_data.strip())
+            return None
                 
         except (socket.error, json.JSONDecodeError) as e:
             self.get_logger().warning(f'Error sending command: {e}')
@@ -285,75 +379,8 @@ class WaterLinkedDVLDriver(Node):
         except Exception as e:
             self.get_logger().warning(f'Error parsing position report: {e}')
     
-    def listen_for_data(self):
-        """Main loop to listen for DVL data"""
-        while self.running and rclpy.ok():
-            if not self.connected:
-                if self.connect_to_dvl():
-                    continue
-                else:
-                    self.get_logger().warning(
-                        f"Retrying connection in {self.reconnect_interval} seconds..."
-                    )
-                    time.sleep(self.reconnect_interval)
-                    continue
-            
-            try:
-                with self.socket_lock:
-                    if not self.socket:
-                        continue
-                    
-                    # Read data from socket
-                    data_buffer = ""
-                    while True:
-                        chunk = self.socket.recv(1024).decode('utf-8')
-                        if not chunk:
-                            raise socket.error("Connection closed by DVL")
-                        
-                        data_buffer += chunk
-                        
-                        # Process complete JSON messages (separated by newlines)
-                        while '\n' in data_buffer:
-                            line, data_buffer = data_buffer.split('\n', 1)
-                            line = line.strip()
-                            
-                            if not line:
-                                continue
-                            
-                            try:
-                                json_data = json.loads(line)
-                                
-                                # Route data based on type
-                                msg_type = json_data.get('type')
-                                if msg_type == 'velocity':
-                                    self.parse_velocity_report(json_data)
-                                elif msg_type == 'position_local':
-                                    self.parse_position_report(json_data)
-                                elif msg_type == 'response':
-                                    # Handle command responses if needed
-                                    self.get_logger().debug(f"Received response: {json_data}")
-                                
-                            except json.JSONDecodeError as e:
-                                self.get_logger().warning(f'Invalid JSON received: {e}')
-                                continue
-                            
-            except socket.error as e:
-                self.get_logger().warning(f'Socket error: {e}')
-                self.connected = False
-                self.disconnect_from_dvl()
-                time.sleep(self.reconnect_interval)
-                
-            except Exception as e:
-                self.get_logger().error(f'Unexpected error in data listener: {e}')
-                time.sleep(1.0)
-    
     def run(self):
         """Main execution function"""
-        # Start data listening thread
-        listener_thread = threading.Thread(target=self.listen_for_data)
-        listener_thread.daemon = True
-        listener_thread.start()
-        
         self.get_logger().info('DVL driver started. Publishing on topics:')
         self.get_logger().info('  - /dvl/odometry (nav_msgs/Odometry)')
         self.get_logger().info('  - /dvl/pose (geometry_msgs/PoseWithCovariance)')
