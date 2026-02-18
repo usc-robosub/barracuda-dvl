@@ -1,5 +1,4 @@
 FROM ros:humble-ros-base
-COPY . /opt/barracuda-dvl/
 SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y \
     git \
@@ -13,6 +12,8 @@ RUN apt-get update && apt-get install -y \
     && echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
     && echo "[ -f /opt/barracuda-dvl/catkin_ws/install/setup.bash ] && source /opt/barracuda-dvl/catkin_ws/install/setup.bash" >> /root/.bashrc \
     && echo "cd /opt/barracuda-dvl/catkin_ws" >> /root/.bashrc
+
+COPY . /opt/barracuda-dvl/
 
 WORKDIR /opt/barracuda-dvl/catkin_ws/
 CMD ["/opt/barracuda-dvl/entrypoint.sh"]
