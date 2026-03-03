@@ -31,7 +31,7 @@ class WaterLinkedDVLDriver(Node):
         super().__init__('waterlinked_dvl_driver')
 
         # Parameters
-        self.declare_parameter('dvl_host', '192.168.2.95')
+        self.declare_parameter('dvl_host', '192.168.8.148')
         self.declare_parameter('dvl_port', 16171)
         self.declare_parameter('client_address', '0.0.0.0')
         self.declare_parameter('frame_id', 'dvl_link')
@@ -39,6 +39,10 @@ class WaterLinkedDVLDriver(Node):
         self.declare_parameter('publish_tf', True)
         self.declare_parameter('connection_timeout', 5.0)
         self.declare_parameter('reconnect_interval', 2.0)
+        self.declare_parameter('topics.odometry', 'dvl/odometry')
+        self.declare_parameter('topics.pose', 'dvl/pose')
+        self.declare_parameter('topics.altitude', 'dvl/altitude')
+        self.declare_parameter('services.acoustic_control', 'dvl/set_acoustic_enabled')
 
         self.dvl_host = self.get_parameter('dvl_host').value
         self.dvl_port = int(self.get_parameter('dvl_port').value)
@@ -48,16 +52,20 @@ class WaterLinkedDVLDriver(Node):
         self.publish_tf = self._get_bool_param('publish_tf', True)
         self.connection_timeout = float(self.get_parameter('connection_timeout').value)
         self.reconnect_interval = float(self.get_parameter('reconnect_interval').value)
+        self.topic_odom = self.get_parameter('topics.odometry').value
+        self.topic_pose = self.get_parameter('topics.pose').value
+        self.topic_alt = self.get_parameter('topics.altitude').value
+        self.srv_acoustic = self.get_parameter('services.acoustic_control').value
 
         self.get_logger().info(f'Parameters loaded: dvl_host={self.dvl_host}, dvl_port={self.dvl_port}, client_address={self.client_address}')
 
         # Publishers
-        self.odom_pub = self.create_publisher(Odometry, 'dvl/odometry', 10)
-        self.pose_pub = self.create_publisher(PoseWithCovariance, 'dvl/pose', 10)
-        self.altitude_pub = self.create_publisher(Range, 'dvl/altitude', 10)
+        self.odom_pub = self.create_publisher(Odometry, self.topic_odom, 10)
+        self.pose_pub = self.create_publisher(PoseWithCovariance, self.topic_pose, 10)
+        self.altitude_pub = self.create_publisher(Range, self.topic_alt, 10)
 
         # Services
-        self.acoustic_service = self.create_service(SetBool, 'dvl/set_acoustic_enabled', self.set_acoustic_enabled_callback)
+        self.acoustic_service = self.create_service(SetBool, self.srv_acoustic, self.set_acoustic_enabled_callback)
 
         # TF broadcaster
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self) if self.publish_tf else None
@@ -381,11 +389,11 @@ class WaterLinkedDVLDriver(Node):
     def run(self):
         """Main execution function"""
         self.get_logger().info('DVL driver started. Publishing on topics:')
-        self.get_logger().info('  - /dvl/odometry (nav_msgs/Odometry)')
-        self.get_logger().info('  - /dvl/pose (geometry_msgs/PoseWithCovariance)')
-        self.get_logger().info('  - /dvl/altitude (sensor_msgs/Range)')
+        self.get_logger().info(f'  - {self.topic_odom} (nav_msgs/Odometry)')
+        self.get_logger().info(f'  - {self.topic_pose} (geometry_msgs/PoseWithCovariance)')
+        self.get_logger().info(f'  - {self.topic_alt} (sensor_msgs/Range)')
         self.get_logger().info('Services available:')
-        self.get_logger().info('  - /dvl/set_acoustic_enabled (std_srvs/SetBool)')
+        self.get_logger().info(f'  - {self.srv_acoustic} (std_srvs/SetBool)')
         
         # Keep the node running
         try:
