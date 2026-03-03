@@ -3,6 +3,7 @@
 # Network settings
 dvl_host: "192.168.2.95" # Default IP address for DVL
 dvl_port: 16171 # TCP port for JSON protocol
+client_address: "0.0.0.0" # Local IP address
 
 # Frame settings
 frame_id: "dvl_link" # DVL sensor frame

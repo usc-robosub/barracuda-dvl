@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>waterlinked_dvl</name>
+  <name>barracuda_dvl</name>
   <version>1.0.0</version>
   <description>ROS 2 driver for Water Linked DVL A50</description>
 

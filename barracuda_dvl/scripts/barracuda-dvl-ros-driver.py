@@ -12,7 +12,6 @@ License: MIT
 
 import json
 import socket
-import time
 from math import cos, sin
 
 import rclpy

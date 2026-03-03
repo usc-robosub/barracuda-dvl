@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(waterlinked_dvl)
+project(barracuda_dvl)
 
 find_package(ament_cmake REQUIRED)
 

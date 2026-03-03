@@ -26,9 +26,9 @@ def generate_launch_description():
         DeclareLaunchArgument('publish_static_tf', default_value='true'),
 
         Node(
-            package='waterlinked_dvl',
+            package='barracuda_dvl',
             executable='barracuda-dvl-ros-driver.py',
-            name='waterlinked_dvl_driver',
+            name='barracuda_dvl_driver',
             output='screen',
             parameters=[{
                 'dvl_host': dvl_host,

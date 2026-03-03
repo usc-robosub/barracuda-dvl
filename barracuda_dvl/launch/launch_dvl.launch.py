@@ -13,7 +13,7 @@ def generate_launch_description():
         DeclareLaunchArgument('dvl_port', default_value='16171'),
 
         Node(
-            package='waterlinked_dvl',
+            package='barracuda_dvl',
             executable='barracuda-dvl-ros-driver.py',
             name='dvl_publisher',
             namespace='barracuda',
