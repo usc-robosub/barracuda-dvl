@@ -13,7 +13,7 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='barracuda_dvl',
-            executable='barracuda-dvl-ros-driver.py',
+            executable='waterlinked_dvl_ros_driver.py',
             name='dvl_publisher',
             namespace='barracuda',
             output='screen',
