@@ -5,9 +5,6 @@ Water Linked DVL A50 ROS Driver
 
 This ROS node interfaces with the Water Linked DVL A50 using the TCP JSON protocol.
 It publishes odometry and pose information and provides a service to control acoustics.
-
-Author: Generated for Water Linked DVL A50 integration
-License: MIT
 """
 
 import json

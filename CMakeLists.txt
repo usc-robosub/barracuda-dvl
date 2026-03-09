@@ -5,7 +5,7 @@ find_package(ament_cmake REQUIRED)
 
 # Install Python script
 install(PROGRAMS
-  scripts/barracuda-dvl-ros-driver.py
+  scripts/waterlinked_dvl_ros_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
